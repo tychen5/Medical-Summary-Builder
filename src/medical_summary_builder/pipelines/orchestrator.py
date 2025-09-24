@@ -104,22 +104,19 @@ class MedicalSummaryPipeline:
             "First, use the supplied tool to gather authoritative evidence. "
             "Populate every claimant profile field (name, SSN, DOB, AOD, DLI, Age, Education, Title, Notes). "
             "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
-            "Cite the exact page numbers in the reference column before ending the conversation."
-        )
-
-        structured_response_prompt = (
-            "Produce a JSON object with the following shape: {\n"
+            "After gathering all evidence, produce a JSON object with the following shape: {\n"
             "  \"profile\": ClaimantProfile fields (claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, "
             "age_at_aod, current_age, education, title, notes),\n"
             "  \"events\": list of medical events with keys date (MM/DD/YYYY), provider, reason, reference (e.g., Pg 12/504),\n"
             "  \"custom_tables\": mapping of table names to lists of row dictionaries.\n"
+            "}\n"
+            "Cite the exact page numbers in the reference column. "
             "Ensure that every field is populated with the best available evidence or null if truly unavailable."
         )
 
         summary_agent = create_react_agent(
             tools=[retriever_tool],
             system_prompt=agent_system_prompt,
-            response_format=(structured_response_prompt, AgentSummary),
             provider="openai",
         )
 
