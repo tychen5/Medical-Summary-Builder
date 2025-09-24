@@ -5,6 +5,7 @@ from typing import Iterable
 from langchain_pinecone import PineconeVectorStore
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import VectorStoreRetriever
 
 from ..config import settings
 
@@ -23,10 +24,10 @@ class VectorIndexManager:
             index_name=self.index_name,
         )
 
-    def as_retriever(self, *, search_kwargs: dict | None = None) -> PineconeVectorStore:
+    def as_retriever(self, *, search_kwargs: dict | None = None) -> VectorStoreRetriever:
         search_kwargs = search_kwargs or {"k": 8}
-        return PineconeVectorStore(
+        vectorstore = PineconeVectorStore(
             embedding=self.embeddings,
             index_name=self.index_name,
-            search_kwargs=search_kwargs,
         )
+        return vectorstore.as_retriever(search_kwargs=search_kwargs)
