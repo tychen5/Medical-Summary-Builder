@@ -1,21 +1,34 @@
 from __future__ import annotations
 
+import logging
+import json
+import datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Iterable, Optional
 
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.documents import Document
+from pydantic import BaseModel, Field, ValidationError
 
 from ..agents import create_react_agent
 from ..config import settings
 from ..data_ingestion import DocumentConverter, PDFMedicalLoader, TemplateLoader
 from ..logging_config import configure_logging
 from ..preprocessing import DocumentChunker, MetadataRouter, PageRelevanceRanker
-from ..schemas import ClaimantProfile, MedicalSummary
+from ..schemas import ClaimantProfile, MedicalEvent, MedicalSummary
 from ..utils import ensure_directory
 from ..vectorstore import VectorIndexManager
 from ..llm import EmbeddingFactory, LLMClientFactory
+
+
+logger = logging.getLogger(__name__)
+
+
+class AgentSummary(BaseModel):
+    profile: ClaimantProfile = Field(default_factory=ClaimantProfile)
+    events: list[MedicalEvent] = Field(default_factory=list)
+    custom_tables: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 @dataclass
@@ -31,7 +44,7 @@ class MedicalSummaryPipeline:
     """High-level orchestration of the medical summary generation workflow."""
 
     def __init__(self) -> None:
-        self.llm = LLMClientFactory.create()
+        self.llm = LLMClientFactory.create(provider="openai")
         self.embedding_model = EmbeddingFactory.create()
         self.chunker = DocumentChunker(settings.chunk_size, settings.chunk_overlap)
         self.metadata_router = MetadataRouter(self.llm)
@@ -88,33 +101,304 @@ class MedicalSummaryPipeline:
         summary_agent = create_react_agent(
             tools=[retriever_tool],
             system_prompt="You are an expert at extracting information from medical records. "
-            "First, find all available details for the claimant profile. "
-            "Then, provide a comprehensive summary of the findings.",
+            "First, use the supplied tool to gather authoritative evidence. "
+            "Populate every claimant profile field (name, SSN, DOB, AOD, DLI, Age, Education, Title, Notes). "
+            "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
+            "Cite the exact page numbers in the reference column."
         )
 
-        agent_input = {"messages": [("user", "Find and summarize all available claimant profile details.")]}
-        summary_result = summary_agent.invoke(agent_input)
-
-        # Extract the summary text from the agent's final message.
-        summary_text = ""
-        if messages := summary_result.get("messages"):
-            if isinstance(messages, list) and messages:
-                summary_text = messages[-1].content
-
-        claimant_profile = ClaimantProfile()
-        if summary_text:
-            # Step 2: Use an LLM with structured output to parse the summary into the ClaimantProfile schema.
-            structured_llm = self.llm.with_structured_output(ClaimantProfile)
-
-            prompt = (
-                "Given the following summary of a claimant's profile, "
-                "extract the information into the ClaimantProfile format.\n\n"
-                f"Summary:\n{summary_text}"
+        user_instruction_lines = [
+            "Use the medical_record_search tool iteratively to gather facts.",
+            "Return the final answer strictly in the structured format provided.",
+        ]
+        if custom_instruction:
+            user_instruction_lines.append(
+                "Custom table guidance provided by the user. Incorporate these requirements when selecting timeline events:\n"
+                f"{custom_instruction}"
             )
 
-            extracted_data = structured_llm.invoke(prompt)
-            if isinstance(extracted_data, ClaimantProfile):
-                claimant_profile = extracted_data
+        agent_input = {"messages": [("user", "\n\n".join(user_instruction_lines))]}
+        summary_result = summary_agent.invoke(agent_input)
+        
 
-        # Further steps: agent-driven table filling, report generation
-        return MedicalSummary(claimant_profile=claimant_profile)
+        # Extract the summary text from the agent's final message.
+        agent_summary = self._parse_agent_result(summary_result)
+
+        if not agent_summary:
+            logger.warning("Agent did not return structured data; attempting fallback extraction.")
+            print("===summary_result:\n",summary_result,"\n====")
+            agent_summary = self._fallback_extraction(retriever, custom_instruction)
+
+        if not agent_summary:
+            logger.error("Fallback extraction failed; returning empty medical summary.")
+            return MedicalSummary()
+
+        return MedicalSummary(
+            profile=agent_summary.profile,
+            events=agent_summary.events,
+            custom_tables=agent_summary.custom_tables,
+        )
+
+    def _parse_agent_result(self, result: dict[str, Any]) -> AgentSummary | None:
+        """Normalize agent output (messages/return_values) into an AgentSummary instance."""
+
+        # Preferred: structured output via return_values['output']
+        return_values = result.get("return_values") if isinstance(result, dict) else None
+        candidate = None
+        if isinstance(return_values, dict) and "output" in return_values:
+            candidate = return_values["output"]
+
+        if isinstance(candidate, AgentSummary):
+            return candidate
+
+        if isinstance(candidate, dict):
+            normalized = self._normalize_agent_payload(candidate)
+            try:
+                return AgentSummary.model_validate(normalized)
+            except ValidationError as exc:
+                logger.debug("Validation error on dict candidate: %s", exc)
+
+        if isinstance(candidate, str):
+            parsed = self._parse_json_string(candidate)
+            if parsed:
+                return parsed
+
+        # Fallback: examine final message content
+        messages = result.get("messages") if isinstance(result, dict) else None
+        if isinstance(messages, list) and messages:
+            final_content = getattr(messages[-1], "content", None) or messages[-1]
+            if isinstance(final_content, str):
+                parsed = self._parse_json_string(final_content)
+                if parsed:
+                    return parsed
+
+        return None
+
+    def _parse_json_string(self, text: str) -> AgentSummary | None:
+        if not text:
+            return None
+
+        candidates = self._json_candidates(text)
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+            normalized = self._normalize_agent_payload(data)
+            try:
+                return AgentSummary.model_validate(normalized)
+            except ValidationError as exc:
+                logger.debug("Validation error on JSON candidate: %s", exc)
+                continue
+
+        return None
+
+    def _fallback_extraction(
+        self,
+        retriever,
+        custom_instruction: Optional[str],
+    ) -> AgentSummary | None:
+        """Best-effort structured extraction using retrieved context and the base LLM."""
+
+        context = self._collect_retrieved_context(
+            retriever,
+            queries=[
+                "claimant profile information",
+                "medical summary claimant details",
+                "background claimant metadata",
+                "timeline of medical events",
+            ],
+            max_chunks=12,
+        )
+
+        if not context:
+            logger.warning("No context retrieved during fallback extraction.")
+            return None
+
+        prompt_parts = [
+            "You are given excerpts from a medical case file.",
+            "Fill in the claimant profile (name, SSN, DOB, AOD, DLI, age details, education, title, notes).",
+            "Construct a timeline of significant medical events with date (MM/DD/YYYY), provider, reason, and reference page label (e.g., Pg 12/504).",
+            "Return JSON with keys 'profile', 'events', and 'custom_tables'.",
+            "The 'profile' object must include claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, age_at_aod, current_age, education, title, notes.",
+            "The 'events' array must contain objects with keys date, provider, reason, reference.",
+            "The 'custom_tables' object should map table names to arrays of row dictionaries (use an empty object if none).",
+            "Context:",
+            context,
+        ]
+
+        if custom_instruction:
+            prompt_parts.append("Custom table guidance:\n" + custom_instruction)
+
+        prompt = "\n\n".join(prompt_parts)
+
+        try:
+            response = self.llm.invoke(prompt)
+        except Exception as exc:
+            logger.error("Fallback extraction LLM call failed: %s", exc)
+            return None
+
+        response_text = getattr(response, "content", None)
+        if isinstance(response_text, list):
+            response_text = "".join(str(part) for part in response_text)
+
+        if not response_text and hasattr(response, "text"):
+            response_text = response.text
+
+        if not response_text and isinstance(response, str):
+            response_text = response
+
+        if not response_text:
+            logger.warning("Fallback extraction returned empty response.")
+            return None
+
+        
+        parsed = self._parse_json_string(response_text)
+        if not parsed:
+            logger.warning("Fallback extraction could not parse JSON output.")
+            print("===response_text:\n",response_text,"\n====")
+            return None
+
+        return parsed
+
+    @staticmethod
+    def _coerce_date(value: Any) -> datetime.date | None | str:
+        if isinstance(value, datetime.date):
+            return value
+
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return None
+
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+                try:
+                    return datetime.datetime.strptime(stripped, fmt).date()
+                except ValueError:
+                    continue
+
+        return value
+
+    def _normalize_agent_payload(self, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        profile = data.get("profile")
+        if isinstance(profile, dict):
+            for field in (
+                "date_of_birth",
+                "alleged_onset_date",
+                "date_last_insured",
+            ):
+                coerced = self._coerce_date(profile.get(field))
+                if isinstance(coerced, datetime.date):
+                    profile[field] = coerced
+                elif coerced is None:
+                    profile[field] = None
+                else:
+                    profile[field] = coerced
+
+            data["profile"] = profile
+
+        events = data.get("events")
+        if isinstance(events, list):
+            for event in events:
+                if isinstance(event, dict):
+                    coerced = self._coerce_date(event.get("date"))
+                    if isinstance(coerced, datetime.date):
+                        event["date"] = coerced
+                    elif coerced is None:
+                        event["date"] = None
+                    else:
+                        event["date"] = coerced
+
+        return data
+
+    def _json_candidates(self, text: str) -> list[str]:
+        if not text:
+            return []
+
+        stripped = text.strip()
+        candidates: list[str] = []
+
+        def strip_code_fence(value: str) -> str:
+            lines = value.strip().splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            return "\n".join(lines).strip()
+
+        fence_stripped = strip_code_fence(stripped)
+        for candidate in {stripped, fence_stripped}:
+            if candidate:
+                candidates.append(candidate)
+
+        candidates.extend(self._balanced_json_substrings(fence_stripped))
+        return [cand for cand in candidates if cand]
+
+    @staticmethod
+    def _balanced_json_substrings(text: str) -> list[str]:
+        substrings: list[str] = []
+        if not text:
+            return substrings
+
+        for opening, closing in (("{", "}"), ("[", "]")):
+            stack: list[int] = []
+            start_index: Optional[int] = None
+
+            for idx, char in enumerate(text):
+                if char == opening:
+                    if not stack:
+                        start_index = idx
+                    stack.append(idx)
+                elif char == closing and stack:
+                    stack.pop()
+                    if not stack and start_index is not None:
+                        substrings.append(text[start_index : idx + 1])
+                        start_index = None
+
+        return substrings
+
+    def _collect_retrieved_context(
+        self,
+        retriever,
+        queries: Iterable[str],
+        *,
+        max_chunks: int = 10,
+    ) -> str:
+        """Aggregate top documents from the retriever into a single text context."""
+
+        collected: list[str] = []
+        seen_ids: set[str] = set()
+
+        for query in queries:
+            try:
+                documents = retriever.invoke(query)
+            except Exception as exc:
+                logger.debug("Retriever invoke failed for query '%s': %s", query, exc)
+                documents = []
+
+            for doc in documents:
+                if len(collected) >= max_chunks:
+                    break
+
+                doc_id = str(doc.metadata.get("id") or doc.metadata.get("page_number") or hash(doc.page_content))
+                if doc_id in seen_ids:
+                    continue
+
+                seen_ids.add(doc_id)
+                snippet = doc.page_content.strip()
+                if snippet:
+                    collected.append(
+                        f"[Source: {doc.metadata.get('source', 'unknown')} | Page: {doc.metadata.get('page_label', 'n/a')}]\n{snippet}"
+                    )
+
+            if len(collected) >= max_chunks:
+                break
+
+        return "\n\n".join(collected)
