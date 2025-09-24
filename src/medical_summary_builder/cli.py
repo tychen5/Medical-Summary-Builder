@@ -17,6 +17,7 @@ def build(
         None, exists=True, readable=True, help="Optional path to a markdown file with custom table instructions."
     ),
     skip_reports: bool = typer.Option(False, help="If set, do not emit markdown/DOCX reports."),
+    skip_indexing: bool = typer.Option(False, help="If set, skip PDF chunking and vector indexing."),
 ) -> None:
     """Build a medical summary from the provided case file."""
 
@@ -31,6 +32,7 @@ def build(
         template_path=template_path,
         custom_instruction=instruction_text,
         emit_reports=not skip_reports,
+        skip_indexing=skip_indexing,
     )
     typer.echo("Summary generation completed.")
     if settings.reports_dir.exists() and not skip_reports:

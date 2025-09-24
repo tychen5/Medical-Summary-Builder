@@ -22,11 +22,13 @@ class SummaryBuilderService:
         template_path: Path | str,
         custom_instruction: Optional[str] = None,
         emit_reports: bool = True,
+        skip_indexing: bool = False,
     ) -> MedicalSummary:
         summary = self.pipeline.run(
             pdf_path=pdf_path,
             template_path=template_path,
             custom_instruction=custom_instruction,
+            skip_indexing=skip_indexing,
         )
 
         if emit_reports:

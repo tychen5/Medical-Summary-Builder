@@ -67,10 +67,12 @@ class MedicalSummaryPipeline:
         pdf_path: Path | str,
         template_path: Path | str,
         custom_instruction: Optional[str] = None,
+        skip_indexing: bool = False,
     ) -> MedicalSummary:
         self.setup()
-        documents = self.ingest_source(pdf_path)
-        self.build_vector_index(documents)
+        if not skip_indexing:
+            documents = self.ingest_source(pdf_path)
+            self.build_vector_index(documents)
         self.convert_template(template_path)
         # Further steps: metadata extraction, agent-driven table filling, report generation
         return MedicalSummary()
