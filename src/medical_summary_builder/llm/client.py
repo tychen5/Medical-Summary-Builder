@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from langchain_openai import ChatOpenAI
-from langchain_community.chat_models import ChatNebius
+from langchain_nebius import ChatNebius
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from ..config import settings

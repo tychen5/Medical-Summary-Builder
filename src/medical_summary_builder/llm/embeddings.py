@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from langchain_core.embeddings import Embeddings
-from langchain_community.embeddings import NebiusEmbeddings
+from langchain_nebius import NebiusEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from ..config import settings
