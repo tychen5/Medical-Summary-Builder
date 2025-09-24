@@ -156,29 +156,6 @@ class MedicalSummaryPipeline:
         if not isinstance(result, dict):
             return None
 
-    @staticmethod
-    def _balanced_json_substrings(text: str) -> list[str]:
-        substrings: list[str] = []
-        if not text:
-            return substrings
-
-        for opening, closing in (("{", "}"), ("[", "]")):
-            stack: list[int] = []
-            start_index: Optional[int] = None
-
-            for idx, char in enumerate(text):
-                if char == opening:
-                    if not stack:
-                        start_index = idx
-                    stack.append(idx)
-                elif char == closing and stack:
-                    stack.pop()
-                    if not stack and start_index is not None:
-                        substrings.append(text[start_index : idx + 1])
-                        start_index = None
-
-        return substrings
-
         # Path 1: LangGraph with `response_format` provides `structured_response`
         structured_response = result.get("structured_response")
         if isinstance(structured_response, AgentSummary):
@@ -230,6 +207,29 @@ class MedicalSummaryPipeline:
                     logger.debug("Failed to validate dict content from last message: %s", exc)
 
         return None
+
+    @staticmethod
+    def _balanced_json_substrings(text: str) -> list[str]:
+        substrings: list[str] = []
+        if not text:
+            return substrings
+
+        for opening, closing in (("{", "}"), ("[", "]")):
+            stack: list[int] = []
+            start_index: Optional[int] = None
+
+            for idx, char in enumerate(text):
+                if char == opening:
+                    if not stack:
+                        start_index = idx
+                    stack.append(idx)
+                elif char == closing and stack:
+                    stack.pop()
+                    if not stack and start_index is not None:
+                        substrings.append(text[start_index : idx + 1])
+                        start_index = None
+
+        return substrings
 
     def _parse_json_string(self, text: str) -> AgentSummary | None:
         if not text:
