@@ -235,6 +235,10 @@ class MedicalSummaryPipeline:
         if not text:
             return None
 
+        # Prioritize content after a clear marker to reduce noise from surrounding text
+        if "JSON output:" in text:
+            text = text.split("JSON output:", 1)[1]
+
         candidates = self._json_candidates(text)
         if not candidates:
             fallback = self._attempt_literal_eval(text)
@@ -244,12 +248,17 @@ class MedicalSummaryPipeline:
                 except ValidationError as exc:
                     logger.debug("Validation error on literal-eval fallback: %s", exc)
                     return None
+            else:
+                logger.debug("Could not find any JSON candidates or literal-eval content in text.")
+
         for candidate in candidates:
             try:
                 data = json.loads(candidate)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.debug("json.loads failed: %s. Trying ast.literal_eval.", e)
                 fallback_data = self._attempt_literal_eval(candidate)
                 if fallback_data is None:
+                    logger.debug("ast.literal_eval also failed for candidate.")
                     continue
                 data = fallback_data
 
@@ -257,7 +266,12 @@ class MedicalSummaryPipeline:
             try:
                 return AgentSummary.model_validate(normalized)
             except ValidationError as exc:
-                logger.debug("Validation error on JSON candidate: %s", exc)
+                try:
+                    # Log the object that failed validation, as per user's request.
+                    normalized_str = json.dumps(normalized, indent=2, default=str)
+                except TypeError:
+                    normalized_str = str(normalized)
+                logger.debug("Validation error on JSON candidate: %s\nData: %s", exc, normalized_str)
                 continue
 
         return None
@@ -367,10 +381,10 @@ class MedicalSummaryPipeline:
                 coerced = self._coerce_date(profile.get(field))
                 if isinstance(coerced, datetime.date):
                     profile[field] = coerced
-                elif coerced is None:
-                    profile[field] = None
                 else:
-                    profile[field] = coerced
+                    # If not a date object, it could be None or an unparseable string
+                    # from the LLM. Default to None to ensure validation passes.
+                    profile[field] = None
 
             for field in ("age_at_aod", "current_age"):
                 coerced_int = self._coerce_int(profile.get(field))
