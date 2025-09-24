@@ -122,7 +122,13 @@ PINECONE_INDEX="medical-summary-index"
 
 ### Command-Line Interface (CLI)
 
-Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store. A video demonstration is available: [CLI Demo](outputs/demp.mp4).
+Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store.
+
+A video demonstration is available below:
+
+<p align="center">
+  <video src="outputs/demo.mp4" controls title="CLI Demo" width="800"></video>
+</p>
 
 ```bash
 python -m medical_summary_builder.cli \
