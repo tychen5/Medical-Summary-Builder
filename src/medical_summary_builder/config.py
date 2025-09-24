@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # API keys and model configuration
     nebius_api_key: Optional[str] = Field(default=None, env="NEBIUS_API_KEY")
+    nebius_api_base_url: str = Field(default="https://api.studio.nebius.com/v1/", env="NEBIUS_API_BASE_URL")
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
 
     pinecone_api_key: Optional[str] = Field(default=None, env="PINECONE_API_KEY")
@@ -19,7 +20,9 @@ class Settings(BaseSettings):
     pinecone_index: str = Field(default="medical-summary-index")
 
     model_name: str = Field(default="NLP-qa-large")
-    embedding_model_name: str = Field(default="text-embedding-3-large")
+    nebius_embedding_model: str = Field(default="Qwen/Qwen3-Embedding-8B")
+    openai_embedding_model: str = Field(default="text-embedding-3-small")
+    embedding_dimensions: int = Field(default=1536)
 
     # Chunking parameters
     chunk_size: int = Field(default=1500)
