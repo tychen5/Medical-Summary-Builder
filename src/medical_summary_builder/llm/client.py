@@ -43,7 +43,7 @@ class LLMClientFactory:
             raise ValueError("OPENAI_API_KEY is required for OpenAI provider")
 
         return ChatOpenAI(
-            model=model_name or "gpt-4o-mini",
+            model=model_name or "gpt-5-nano",
             temperature=temperature,
             api_key=settings.openai_api_key,
         )
