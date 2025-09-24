@@ -25,6 +25,13 @@ from ..llm import EmbeddingFactory, LLMClientFactory
 logger = logging.getLogger(__name__)
 
 
+FORMATTING_PROMPT = """You are an expert at extracting structured information from a conversation history.
+Based on the conversation, extract the claimant profile and timeline of medical events.
+Ensure all profile fields are populated if the information is available.
+Format the timeline events chronologically.
+Provide the output in the requested JSON format."""
+
+
 class AgentSummary(BaseModel):
     profile: ClaimantProfile = Field(default_factory=ClaimantProfile)
     events: list[MedicalEvent] = Field(default_factory=list)
@@ -106,7 +113,7 @@ class MedicalSummaryPipeline:
             "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
             "Cite the exact page numbers in the reference column. "
             "Return the final answer in the requested structured format.",
-            response_format=AgentSummary,
+            response_format=(FORMATTING_PROMPT, AgentSummary),
         )
 
         user_instruction_lines = [

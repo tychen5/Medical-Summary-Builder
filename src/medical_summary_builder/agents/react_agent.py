@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Type
+from typing import Any, Sequence, Type, Union
 
 from langgraph.prebuilt import chat_agent_executor
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ def create_react_agent(
     tools: Sequence,
     *,
     system_prompt: str | None = None,
-    response_format: Type[BaseModel] | None = None,
+    response_format: Union[Type[BaseModel], tuple[str, Type[BaseModel]], None] = None,
 ):
     """Instantiate a ReAct-style agent for iterative extraction."""
 
