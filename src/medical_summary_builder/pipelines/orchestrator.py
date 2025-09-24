@@ -4,13 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from langchain.tools.retriever import create_retriever_tool
 from langchain_core.documents import Document
 
+from ..agents import create_react_agent
 from ..config import settings
 from ..data_ingestion import DocumentConverter, PDFMedicalLoader, TemplateLoader
 from ..logging_config import configure_logging
 from ..preprocessing import DocumentChunker, MetadataRouter, PageRelevanceRanker
-from ..schemas import MedicalSummary
+from ..schemas import ClaimantProfile, MedicalSummary
 from ..utils import ensure_directory
 from ..vectorstore import VectorIndexManager
 from ..llm import EmbeddingFactory, LLMClientFactory
@@ -74,5 +76,27 @@ class MedicalSummaryPipeline:
             documents = self.ingest_source(pdf_path)
             self.build_vector_index(documents)
         self.convert_template(template_path)
-        # Further steps: metadata extraction, agent-driven table filling, report generation
-        return MedicalSummary()
+
+        retriever = self.vector_index_manager.as_retriever()
+        retriever_tool = create_retriever_tool(
+            retriever,
+            "medical_record_search",
+            "Searches and returns information from the claimant's medical records.",
+        )
+
+        agent = create_react_agent(
+            tools=[retriever_tool],
+            system_prompt="You are an expert at extracting information from medical records. "
+            "Extract all available details for the claimant profile based on the user's request.",
+            response_format=ClaimantProfile,
+        )
+
+        agent_input = {"messages": [("user", "Extract all available details for the claimant profile.")]}
+        result = agent.invoke(agent_input)
+
+        claimant_profile = ClaimantProfile()
+        if structured_response := result.get("structured_response"):
+            claimant_profile = ClaimantProfile.model_validate(structured_response)
+
+        # Further steps: agent-driven table filling, report generation
+        return MedicalSummary(claimant_profile=claimant_profile)
