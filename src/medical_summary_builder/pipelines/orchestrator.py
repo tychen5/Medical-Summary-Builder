@@ -104,12 +104,13 @@ class MedicalSummaryPipeline:
             "First, use the supplied tool to gather authoritative evidence. "
             "Populate every claimant profile field (name, SSN, DOB, AOD, DLI, Age, Education, Title, Notes). "
             "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
-            "Cite the exact page numbers in the reference column."
+            "Cite the exact page numbers in the reference column. "
+            "Return the final answer in the requested structured format.",
+            response_format=AgentSummary,
         )
 
         user_instruction_lines = [
-            "Use the medical_record_search tool iteratively to gather facts.",
-            "Return the final answer strictly in the structured format provided.",
+            "Use the medical_record_search tool iteratively to gather all necessary facts before producing the final summary.",
         ]
         if custom_instruction:
             user_instruction_lines.append(
@@ -141,36 +142,50 @@ class MedicalSummaryPipeline:
 
     def _parse_agent_result(self, result: dict[str, Any]) -> AgentSummary | None:
         """Normalize agent output (messages/return_values) into an AgentSummary instance."""
+        if not isinstance(result, dict):
+            return None
 
-        # Preferred: structured output via return_values['output']
-        return_values = result.get("return_values") if isinstance(result, dict) else None
-        candidate = None
+        # Path 1: LangGraph with `response_format` provides `structured_response`
+        structured_response = result.get("structured_response")
+        if isinstance(structured_response, AgentSummary):
+            return structured_response
+        if isinstance(structured_response, dict):
+            try:
+                return AgentSummary.model_validate(self._normalize_agent_payload(structured_response))
+            except ValidationError as exc:
+                logger.debug("Validation error on 'structured_response': %s", exc)
+
+        # Path 2: Older agent patterns might use `return_values`
+        return_values = result.get("return_values")
         if isinstance(return_values, dict) and "output" in return_values:
             candidate = return_values["output"]
-
-        if isinstance(candidate, AgentSummary):
-            return candidate
-
-        if isinstance(candidate, dict):
-            normalized = self._normalize_agent_payload(candidate)
-            try:
-                return AgentSummary.model_validate(normalized)
-            except ValidationError as exc:
-                logger.debug("Validation error on dict candidate: %s", exc)
-
-        if isinstance(candidate, str):
-            parsed = self._parse_json_string(candidate)
-            if parsed:
-                return parsed
-
-        # Fallback: examine final message content
-        messages = result.get("messages") if isinstance(result, dict) else None
-        if isinstance(messages, list) and messages:
-            final_content = getattr(messages[-1], "content", None) or messages[-1]
-            if isinstance(final_content, str):
-                parsed = self._parse_json_string(final_content)
+            if isinstance(candidate, AgentSummary):
+                return candidate
+            if isinstance(candidate, dict):
+                try:
+                    return AgentSummary.model_validate(self._normalize_agent_payload(candidate))
+                except ValidationError as exc:
+                    logger.debug("Validation error on dict from 'return_values': %s", exc)
+            if isinstance(candidate, str):
+                parsed = self._parse_json_string(candidate)
                 if parsed:
                     return parsed
+
+        # Path 3: Fallback to parsing the final message content
+        messages = result.get("messages")
+        if isinstance(messages, list) and messages:
+            last_message = messages[-1]
+            content = getattr(last_message, "content", "")
+
+            if isinstance(content, str) and content.strip():
+                parsed = self._parse_json_string(content)
+                if parsed:
+                    return parsed
+            elif isinstance(content, dict):
+                try:
+                    return AgentSummary.model_validate(self._normalize_agent_payload(content))
+                except (ValidationError, TypeError):
+                    logger.debug("Failed to validate dict content from last message.")
 
         return None
 
