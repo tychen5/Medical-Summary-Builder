@@ -146,7 +146,8 @@ The architecture keeps each phase isolated so retrieval, extraction, and formatt
    python -m medical_summary_builder.cli build \
      --pdf-path Data/Medical\ File.pdf \
      --template-path Data/Medical\ Summary.docx \
-     --custom-instruction-file prompts/custom_table.md
+     --custom-instruction-file prompts/custom_table.md \
+     --skip-indexing
    ```
 
    - **`--custom-instruction-file`**: Optional markdown describing columns, data definitions, and examples for bespoke tables.
