@@ -151,6 +151,7 @@ The architecture keeps each phase isolated so retrieval, extraction, and formatt
 
    - **`--custom-instruction-file`**: Optional markdown describing columns, data definitions, and examples for bespoke tables.
    - **`--skip-reports`**: Avoid writing markdown/DOCX outputs if downstream systems consume JSON directly.
+   - **`--skip-indexing`**: Bypass PDF chunking and vector indexing if the knowledge base is already populated.
 
 4. **Outputs** are written to the directory configured by `settings.reports_dir` (`outputs/reports/` by default). The CLI will print the exact path upon completion.
 
