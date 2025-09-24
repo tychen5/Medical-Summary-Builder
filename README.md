@@ -17,6 +17,19 @@ The system is designed for reliability and flexibility, featuring robust parsing
 
 ---
 
+## Project Achievements
+
+This project successfully delivers a robust, end-to-end solution for automated medical summary generation. Key achievements include:
+
+- **Fully Automated Pipeline**: An operational workflow that seamlessly ingests a source PDF and DOCX template, orchestrates LLM-driven data extraction, and generates a populated summary report without manual intervention.
+- **Advanced RAG-Agent Implementation**: Successful integration of a ReAct agent that iteratively queries a Pinecone vector store to gather evidence, demonstrating a sophisticated approach to information retrieval.
+- **High-Reliability Extraction**: A dual-layer extraction strategy combining a primary ReAct agent with a schema-guided fallback mechanism. This design ensures that the pipeline can recover from agent failures and still produce structured output.
+- **Custom Table Generation**: The system fulfills the "bonus" requirement by interpreting user-provided markdown instructions to dynamically generate custom tables, showcasing its flexibility and adaptability to user needs.
+- **Production-Ready Interfaces**: Delivers both a powerful command-line interface (CLI) for batch processing and a scalable FastAPI web service for real-time integration, making the tool versatile for different deployment scenarios.
+- **Modular and Maintainable Codebase**: The project is built on a clean, modular architecture, with clear separation of concerns (e.g., ingestion, processing, reporting). This structure makes the system easy to understand, maintain, and extend.
+
+---
+
 ## How It Works: The Extraction Pipeline
 
 1.  **Ingestion & Preprocessing**: The pipeline begins by loading the source `Medical File.pdf` and the `Medical Summary.docx` template. The PDF content is parsed and split into manageable, overlapping text chunks (default size: 1500 chars, overlap: 200 chars) to prepare for indexing.
