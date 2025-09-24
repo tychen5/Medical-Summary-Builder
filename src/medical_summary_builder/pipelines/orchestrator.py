@@ -9,6 +9,7 @@ from typing import Any, Iterable, Optional
 
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field, ValidationError
 
 from ..agents import create_react_agent
@@ -98,14 +99,28 @@ class MedicalSummaryPipeline:
         )
 
         # Step 1: Run a ReAct agent to retrieve relevant information and generate a summary.
-        summary_agent = create_react_agent(
-            tools=[retriever_tool],
-            system_prompt="You are an expert at extracting information from medical records. "
+        agent_system_prompt = (
+            "You are an expert at extracting information from medical records. "
             "First, use the supplied tool to gather authoritative evidence. "
             "Populate every claimant profile field (name, SSN, DOB, AOD, DLI, Age, Education, Title, Notes). "
             "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
-            "Cite the exact page numbers in the reference column. "
-            "Return the final answer as a single JSON object with three keys: 'profile' (containing claimant demographic information), 'events' (a list of medical timeline events), and 'custom_tables' (for any user-specified tables).",
+            "Cite the exact page numbers in the reference column before ending the conversation."
+        )
+
+        structured_response_prompt = (
+            "Produce a JSON object with the following shape: {\n"
+            "  \"profile\": ClaimantProfile fields (claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, "
+            "age_at_aod, current_age, education, title, notes),\n"
+            "  \"events\": list of medical events with keys date (MM/DD/YYYY), provider, reason, reference (e.g., Pg 12/504),\n"
+            "  \"custom_tables\": mapping of table names to lists of row dictionaries.\n"
+            "Ensure that every field is populated with the best available evidence or null if truly unavailable."
+        )
+
+        summary_agent = create_react_agent(
+            tools=[retriever_tool],
+            system_prompt=agent_system_prompt,
+            response_format=(structured_response_prompt, AgentSummary),
+            provider="openai",
         )
 
         user_instruction_lines = [
@@ -113,20 +128,18 @@ class MedicalSummaryPipeline:
         ]
         if custom_instruction:
             user_instruction_lines.append(
-                "Custom table guidance provided by the user. Incorporate these requirements when selecting timeline events:\n"
                 f"{custom_instruction}"
             )
 
         agent_input = {"messages": [("user", "\n\n".join(user_instruction_lines))]}
         summary_result = summary_agent.invoke(agent_input)
-        
 
-        # Extract the summary text from the agent's final message.
+        logger.debug("Agent summary_result: %s", summary_result)
+
         agent_summary = self._parse_agent_result(summary_result)
 
         if not agent_summary:
             logger.warning("Agent did not return structured data; attempting fallback extraction.")
-            print("===summary_result:\n",summary_result,"\n====")
             agent_summary = self._fallback_extraction(retriever, custom_instruction)
 
         if not agent_summary:
@@ -148,6 +161,13 @@ class MedicalSummaryPipeline:
         structured_response = result.get("structured_response")
         if isinstance(structured_response, AgentSummary):
             return structured_response
+        if isinstance(structured_response, BaseModel):
+            try:
+                return AgentSummary.model_validate(
+                    self._normalize_agent_payload(structured_response.model_dump())
+                )
+            except ValidationError as exc:
+                logger.debug("Validation error on BaseModel structured_response: %s", exc)
         if isinstance(structured_response, dict):
             try:
                 return AgentSummary.model_validate(self._normalize_agent_payload(structured_response))
@@ -174,17 +194,18 @@ class MedicalSummaryPipeline:
         messages = result.get("messages")
         if isinstance(messages, list) and messages:
             last_message = messages[-1]
-            content = getattr(last_message, "content", "")
+            content = getattr(last_message, "content", None)
 
-            if isinstance(content, str) and content.strip():
-                parsed = self._parse_json_string(content)
+            for candidate_text in self._content_text_candidates(content):
+                parsed = self._parse_json_string(candidate_text)
                 if parsed:
                     return parsed
-            elif isinstance(content, dict):
+
+            if isinstance(content, dict):
                 try:
                     return AgentSummary.model_validate(self._normalize_agent_payload(content))
-                except (ValidationError, TypeError):
-                    logger.debug("Failed to validate dict content from last message.")
+                except (ValidationError, TypeError) as exc:
+                    logger.debug("Failed to validate dict content from last message: %s", exc)
 
         return None
 
@@ -271,7 +292,7 @@ class MedicalSummaryPipeline:
         parsed = self._parse_json_string(response_text)
         if not parsed:
             logger.warning("Fallback extraction could not parse JSON output.")
-            print("===response_text:\n",response_text,"\n====")
+            logger.debug("Fallback extraction raw response: %s", response_text)
             return None
 
         return parsed
@@ -299,6 +320,8 @@ class MedicalSummaryPipeline:
 
     def _normalize_agent_payload(self, data: Any) -> Any:
         if not isinstance(data, dict):
+            if isinstance(data, BaseModel):
+                return self._normalize_agent_payload(data.model_dump())
             return data
 
         profile = data.get("profile")
@@ -360,6 +383,36 @@ class MedicalSummaryPipeline:
         substrings: list[str] = []
         if not text:
             return substrings
+
+    def _content_text_candidates(self, content: Any) -> list[str]:
+        candidates: list[str] = []
+
+        def _collect(value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped:
+                    candidates.append(stripped)
+            elif isinstance(value, BaseModel):
+                candidates.append(json.dumps(value.model_dump()))
+            elif isinstance(value, dict):
+                for key in ("output", "text", "value", "content"):
+                    maybe = value.get(key)
+                    if isinstance(maybe, str) and maybe.strip():
+                        candidates.append(maybe.strip())
+                try:
+                    candidates.append(json.dumps(value))
+                except (TypeError, ValueError):
+                    pass
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    _collect(item)
+            elif isinstance(value, BaseMessage):
+                _collect(getattr(value, "content", None))
+
+        _collect(content)
+        return candidates
 
         for opening, closing in (("{", "}"), ("[", "]")):
             stack: list[int] = []
