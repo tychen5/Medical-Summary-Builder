@@ -20,7 +20,7 @@ def create_react_agent(
     llm = LLMClientFactory.create(temperature=0.1)
 
     return chat_agent_executor.create_react_agent(
-        llm=llm,
+        model=llm,
         prompt=system_prompt or "You are an expert medical analyst.",
         tools=tools,
         response_format=response_format,
