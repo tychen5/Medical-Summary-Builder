@@ -84,19 +84,37 @@ class MedicalSummaryPipeline:
             "Searches and returns information from the claimant's medical records.",
         )
 
-        agent = create_react_agent(
+        # Step 1: Run a ReAct agent to retrieve relevant information and generate a summary.
+        summary_agent = create_react_agent(
             tools=[retriever_tool],
             system_prompt="You are an expert at extracting information from medical records. "
-            "Extract all available details for the claimant profile based on the user's request.",
-            response_format=ClaimantProfile,
+            "First, find all available details for the claimant profile. "
+            "Then, provide a comprehensive summary of the findings.",
         )
 
-        agent_input = {"messages": [("user", "Extract all available details for the claimant profile.")]}
-        result = agent.invoke(agent_input)
+        agent_input = {"messages": [("user", "Find and summarize all available claimant profile details.")]}
+        summary_result = summary_agent.invoke(agent_input)
+
+        # Extract the summary text from the agent's final message.
+        summary_text = ""
+        if messages := summary_result.get("messages"):
+            if isinstance(messages, list) and messages:
+                summary_text = messages[-1].content
 
         claimant_profile = ClaimantProfile()
-        if structured_response := result.get("structured_response"):
-            claimant_profile = ClaimantProfile.model_validate(structured_response)
+        if summary_text:
+            # Step 2: Use an LLM with structured output to parse the summary into the ClaimantProfile schema.
+            structured_llm = self.llm.with_structured_output(ClaimantProfile)
+
+            prompt = (
+                "Given the following summary of a claimant's profile, "
+                "extract the information into the ClaimantProfile format.\n\n"
+                f"Summary:\n{summary_text}"
+            )
+
+            extracted_data = structured_llm.invoke(prompt)
+            if isinstance(extracted_data, ClaimantProfile):
+                claimant_profile = extracted_data
 
         # Further steps: agent-driven table filling, report generation
         return MedicalSummary(claimant_profile=claimant_profile)
