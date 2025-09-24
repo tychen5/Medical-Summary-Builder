@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import json
 import datetime
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Optional
@@ -95,14 +96,14 @@ class MedicalSummaryPipeline:
         retriever_tool = create_retriever_tool(
             retriever,
             "medical_record_search",
-            "Searches and returns information from the claimant's medical records.",
+            "Searches and returns information from the claimant's medical records. Please use different keywords to search in parallel until you have all needed evidences.",
         )
 
         # Step 1: Run a ReAct agent to retrieve relevant information and generate a summary.
         agent_system_prompt = (
             "You are an expert at extracting information from medical records. "
-            "First, use the supplied tool to gather authoritative evidence. "
-            "Populate every claimant profile field (name, SSN, DOB, AOD, DLI, Age, Education, Title, Notes). "
+            "First, use the supplied tool multiple times (using different kinds of keywords to search in parallel) and iteratively to gather all required authoritative evidence. "
+            "Populate all of these key profile fields: Claimant Name, SSN, Date of Birth (DOB), AOD, Age at AOD, Date Last Insured (DLI), Current Age, Last Grade Completed (Education), Attended Special Ed Classes (e.g., Yes or No), Title (e.g., T16), Alleged impairments. "
             "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
             "After gathering all evidence, produce a JSON object with the following shape: {\n"
             "  \"profile\": ClaimantProfile fields (claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, "
@@ -136,6 +137,7 @@ class MedicalSummaryPipeline:
         agent_summary = self._parse_agent_result(summary_result)
 
         if not agent_summary:
+            print("===summary_result:\n",summary_result,"\n====")
             logger.warning("Agent did not return structured data; attempting fallback extraction.")
             agent_summary = self._fallback_extraction(retriever, custom_instruction)
 
@@ -153,6 +155,29 @@ class MedicalSummaryPipeline:
         """Normalize agent output (messages/return_values) into an AgentSummary instance."""
         if not isinstance(result, dict):
             return None
+
+    @staticmethod
+    def _balanced_json_substrings(text: str) -> list[str]:
+        substrings: list[str] = []
+        if not text:
+            return substrings
+
+        for opening, closing in (("{", "}"), ("[", "]")):
+            stack: list[int] = []
+            start_index: Optional[int] = None
+
+            for idx, char in enumerate(text):
+                if char == opening:
+                    if not stack:
+                        start_index = idx
+                    stack.append(idx)
+                elif char == closing and stack:
+                    stack.pop()
+                    if not stack and start_index is not None:
+                        substrings.append(text[start_index : idx + 1])
+                        start_index = None
+
+        return substrings
 
         # Path 1: LangGraph with `response_format` provides `structured_response`
         structured_response = result.get("structured_response")
@@ -211,11 +236,22 @@ class MedicalSummaryPipeline:
             return None
 
         candidates = self._json_candidates(text)
+        if not candidates:
+            fallback = self._attempt_literal_eval(text)
+            if fallback is not None:
+                try:
+                    return AgentSummary.model_validate(self._normalize_agent_payload(fallback))
+                except ValidationError as exc:
+                    logger.debug("Validation error on literal-eval fallback: %s", exc)
+                    return None
         for candidate in candidates:
             try:
                 data = json.loads(candidate)
             except json.JSONDecodeError:
-                continue
+                fallback_data = self._attempt_literal_eval(candidate)
+                if fallback_data is None:
+                    continue
+                data = fallback_data
 
             normalized = self._normalize_agent_payload(data)
             try:
@@ -336,6 +372,13 @@ class MedicalSummaryPipeline:
                 else:
                     profile[field] = coerced
 
+            for field in ("age_at_aod", "current_age"):
+                coerced_int = self._coerce_int(profile.get(field))
+                if coerced_int is not None:
+                    profile[field] = coerced_int
+                elif field in profile and profile[field] in {"", "N/A"}:
+                    profile[field] = None
+
             data["profile"] = profile
 
         events = data.get("events")
@@ -349,6 +392,11 @@ class MedicalSummaryPipeline:
                         event["date"] = None
                     else:
                         event["date"] = coerced
+
+        custom_tables = data.get("custom_tables")
+        if isinstance(custom_tables, list):
+            # Some agents may return list of tables; attempt to convert to dict using index keys
+            data["custom_tables"] = {str(idx): table for idx, table in enumerate(custom_tables)}
 
         return data
 
@@ -374,29 +422,6 @@ class MedicalSummaryPipeline:
 
         candidates.extend(self._balanced_json_substrings(fence_stripped))
         return [cand for cand in candidates if cand]
-
-    @staticmethod
-    def _balanced_json_substrings(text: str) -> list[str]:
-        substrings: list[str] = []
-        if not text:
-            return substrings
-
-        for opening, closing in (("{", "}"), ("[", "]")):
-            stack: list[int] = []
-            start_index: Optional[int] = None
-
-            for idx, char in enumerate(text):
-                if char == opening:
-                    if not stack:
-                        start_index = idx
-                    stack.append(idx)
-                elif char == closing and stack:
-                    stack.pop()
-                    if not stack and start_index is not None:
-                        substrings.append(text[start_index : idx + 1])
-                        start_index = None
-
-        return substrings
 
     def _content_text_candidates(self, content: Any) -> list[str]:
         candidates: list[str] = []
@@ -427,6 +452,28 @@ class MedicalSummaryPipeline:
 
         _collect(content)
         return candidates
+
+    @staticmethod
+    def _attempt_literal_eval(text: str) -> Any | None:
+        try:
+            return ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return None
+
+    @staticmethod
+    def _coerce_int(value: Any) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            digits = "".join(ch for ch in value if ch.isdigit())
+            if digits:
+                try:
+                    return int(digits)
+                except ValueError:
+                    return None
+        return None
 
     def _collect_retrieved_context(
         self,
