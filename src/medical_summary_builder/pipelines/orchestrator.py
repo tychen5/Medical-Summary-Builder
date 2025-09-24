@@ -381,6 +381,23 @@ class MedicalSummaryPipeline:
         if not text:
             return substrings
 
+        for opening, closing in (("{", "}"), ("[", "]")):
+            stack: list[int] = []
+            start_index: Optional[int] = None
+
+            for idx, char in enumerate(text):
+                if char == opening:
+                    if not stack:
+                        start_index = idx
+                    stack.append(idx)
+                elif char == closing and stack:
+                    stack.pop()
+                    if not stack and start_index is not None:
+                        substrings.append(text[start_index : idx + 1])
+                        start_index = None
+
+        return substrings
+
     def _content_text_candidates(self, content: Any) -> list[str]:
         candidates: list[str] = []
 
@@ -410,23 +427,6 @@ class MedicalSummaryPipeline:
 
         _collect(content)
         return candidates
-
-        for opening, closing in (("{", "}"), ("[", "]")):
-            stack: list[int] = []
-            start_index: Optional[int] = None
-
-            for idx, char in enumerate(text):
-                if char == opening:
-                    if not stack:
-                        start_index = idx
-                    stack.append(idx)
-                elif char == closing and stack:
-                    stack.pop()
-                    if not stack and start_index is not None:
-                        substrings.append(text[start_index : idx + 1])
-                        start_index = None
-
-        return substrings
 
     def _collect_retrieved_context(
         self,
