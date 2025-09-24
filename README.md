@@ -33,7 +33,7 @@ This project successfully delivers a robust, end-to-end solution for automated m
 ## How It Works: The Extraction Pipeline
 
 1.  **Ingestion & Preprocessing**: The pipeline begins by loading the source `Medical File.pdf` and the `Medical Summary.docx` template. The PDF content is parsed and split into manageable, overlapping text chunks (default size: 1500 chars, overlap: 200 chars) to prepare for indexing.
-2.  **Vector Indexing**: Each text chunk is converted into a vector embedding using a powerful model (e.g., `Qwen/Qwen3-Embedding-8B` or `text-embedding-3-small`) and stored in a Pinecone index. This creates a searchable knowledge base from the medical record. This step can be skipped on subsequent runs if the index is already populated.
+2.  **Vector Indexing**: Each text chunk is converted into a vector embedding using a powerful model (e.g., `Qwen/Qwen3-Embedding-8B` or `text-embedding-3-small`) and stored in a Pinecone index (need to preset it via its console). This creates a searchable knowledge base from the medical record. This step can be skipped on subsequent runs if the index is already populated.
 
     [![Pinecone Index Knowledge Base](outputs/pinecone_index.png)](outputs/pinecone_index.png)
 3.  **Agent-Driven Extraction**: A ReAct (Reasoning and Acting) agent, powered by a large language model (default: `Qwen/Qwen3-235B-A22B-Thinking-2507` for Nebius; default: `gpt-5-nano` for OpenAI), is tasked with building the summary. It uses a retriever tool to query the vector index iteratively, gathering evidence to populate the claimant's profile (name, SSN, DOB, etc.) and construct a timeline of medical events.
