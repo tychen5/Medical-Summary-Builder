@@ -40,9 +40,5 @@ def build(
         typer.echo(f"Reports saved to: {settings.reports_dir}")
 
 
-def main() -> None:
-    app()
-
-
 if __name__ == "__main__":
-    main()
+    app()
