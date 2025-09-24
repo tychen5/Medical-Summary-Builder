@@ -1,30 +1,30 @@
 # Medical Summary Builder
 
-Medical Summary Builder is an end-to-end pipeline that ingests disability case files, extracts structured claimant information, and produces a completed medical summary that mirrors the provided template. The system is designed around modular components that combine Retrieval-Augmented Generation (RAG), LangChain tooling, and configurable report writers so attorneys can quickly assemble customized case summaries.
+Medical Summary Builder is an end-to-end pipeline that ingests medical disability case files, extracts key information using a Retrieval-Augmented Generation (RAG) agent, and produces a structured medical summary in the format of a user-provided template.
+
+The system is designed for reliability and flexibility, featuring robust parsing logic, a fallback extraction mechanism, and support for custom, user-defined data tables.
 
 ---
 
 ## Key Capabilities
 
-- **Automated ingestion** of large medical PDFs into LangChain `Document` objects (`src/medical_summary_builder/data_ingestion/`).
-- **Template awareness** by reading DOCX layouts to align generated outputs with attorney-provided formats (`TemplateLoader`).
-- **Chunking & indexing** of source documents for hybrid semantic retrieval via Pinecone (`DocumentChunker`, `VectorIndexManager`).
-- **LLM-driven extraction** through LangGraph ReAct agents to iteratively retrieve facts and populate summary tables (`agents/`).
-- **Flexible reporting** in markdown and DOCX with placeholders for custom table layouts (`ReportWriter`).
-- **CLI & API surfaces** for local automation or integration into downstream systems (`cli.py`, `api/app.py`).
+- **Automated Ingestion**: Seamlessly processes multi-page medical PDFs and DOCX summary templates.
+- **RAG-Powered Extraction**: Employs a ReAct agent that iteratively queries a vector knowledge base to find and extract claimant data, medical events, and other key facts.
+- **Robust Parsing & Fallback**: Features sophisticated logic to parse structured JSON from agent output and includes a fallback mechanism that performs direct LLM extraction if the agent fails, ensuring high reliability.
+- **Customizable Reporting**: Supports user-provided instructions (via markdown) to generate custom tables alongside the standard medical timeline, catering to specific analytical needs.
+- **Dual Interfaces**: Offers both a command-line interface (CLI) for local and batch processing, and a RESTful API (built with FastAPI) for seamless integration into other systems.
+- **Flexible Reporting**: Generates final summaries in both DOCX (populating the original template) and Markdown formats.
 
 ---
 
-## Inputs & Outputs
+## How It Works: The Extraction Pipeline
 
-- **Primary inputs**
-  - **Source PDF**: `Data/Medical File.pdf`
-  - **Template DOCX**: `Data/Medical Summary.docx`
-  - **Optional instructions**: User-authored markdown describing custom table layout or extraction emphasis
-- **Primary outputs**
-  - **Structured JSON**: `MedicalSummary` schema with claimant profile, timeline events, and optional custom tables
-  - **Markdown report**: `outputs/reports/medical_summary.md`
-  - **DOCX report**: `outputs/reports/medical_summary.docx`
+1.  **Ingestion & Preprocessing**: The pipeline begins by loading the source `Medical File.pdf` and the `Medical Summary.docx` template. The PDF content is parsed and split into manageable, overlapping text chunks (default size: 1500 chars, overlap: 200 chars) to prepare for indexing.
+2.  **Vector Indexing**: Each text chunk is converted into a vector embedding using a powerful model (e.g., `Qwen/Qwen3-Embedding-8B` or `text-embedding-3-small`) and stored in a Pinecone index. This creates a searchable knowledge base from the medical record. This step can be skipped on subsequent runs if the index is already populated.
+3.  **Agent-Driven Extraction**: A ReAct (Reasoning and Acting) agent, powered by a large language model (default: `Qwen/Qwen3-235B-A22B-Thinking-2507`), is tasked with building the summary. It uses a retriever tool to query the vector index iteratively, gathering evidence to populate the claimant's profile (name, SSN, DOB, etc.) and construct a timeline of medical events.
+4.  **Structured Data Parsing**: The agent is prompted to return its findings as a structured JSON object. The pipeline contains robust logic to find and parse this JSON, even if it is embedded in conversational text or slightly malformed.
+5.  **Fallback Extraction**: If the primary agent fails to return a valid structured output, a fallback mechanism is triggered. This process retrieves a broad context from the vector store and uses a direct, schema-guided LLM call to extract the required information, preventing pipeline failure.
+6.  **Report Generation**: The final structured data, represented by a `MedicalSummary` Pydantic model, is passed to a `ReportWriter`. This component populates the original DOCX template with the extracted data and also generates a clean Markdown version of the summary.
 
 ---
 
@@ -38,145 +38,108 @@ Medical Summary Builder is an end-to-end pipeline that ingests disability case f
 ├── outputs/
 │   └── .gitkeep
 ├── prompts/
+│   └── custom_table.md
 ├── requirements.txt
 └── src/
     └── medical_summary_builder/
         ├── __init__.py
-        ├── agents/
-        ├── api/
-        ├── cli.py
-        ├── config.py
-        ├── data_ingestion/
-        ├── llm/
-        ├── logging_config.py
-        ├── pipelines/
-        ├── preprocessing/
-        ├── reporting/
-        ├── schemas/
-        ├── services/
-        └── utils/
+        ├── agents/         # ReAct agent creation
+        ├── api/            # FastAPI application
+        ├── cli.py          # Typer CLI entrypoint
+        ├── config.py       # Centralized configuration
+        ├── data_ingestion/ # PDF and DOCX loaders
+        ├── llm/            # LLM client and embedding factories
+        ├── logging_config.py # Logging setup
+        ├── pipelines/      # Core orchestration logic
+        ├── preprocessing/  # Document chunking and analysis
+        ├── reporting/      # DOCX and Markdown report writers
+        ├── schemas/        # Pydantic data models
+        ├── services/       # High-level service facades
+        └── utils/          # Shared utilities
 ```
-
-### Module Overview
-
-- **`config.py`**: Centralized configuration via `BaseSettings` (API keys, directories, chunking parameters).
-- **`logging_config.py`**: Structured logging setup for console and optional file outputs.
-- **`data_ingestion/`**: Loaders and converters for PDFs and DOCX templates (`PDFMedicalLoader`, `TemplateLoader`, `DocumentConverter`).
-- **`preprocessing/`**: Chunking, metadata routing, and page relevance ranking stubs ready for LLM integration.
-- **`vectorstore/`**: Pinecone index orchestration (`VectorIndexManager`).
-- **`llm/`**: Factories that standardize chat models and embedding providers across Nebius/OpenAI.
-- **`agents/`**: ReAct-style agent factory configured with LangGraph to drive iterative retrieval.
-- **`pipelines/`**: `MedicalSummaryPipeline` wires ingestion, indexing, and downstream extraction steps.
-- **`services/`**: High-level façade (`SummaryBuilderService`) that orchestrates pipeline runs and report emission.
-- **`reporting/`**: Writers that render markdown and DOCX outputs (`ReportWriter`).
-- **`schemas/`**: Pydantic models describing claimant profiles and timeline events.
-- **`api/`**: FastAPI application exposing HTTP endpoints for summary creation.
-- **`cli.py`**: Typer-based CLI entrypoint for local batch processing.
-- **`utils/`**: Shared helpers for IO and prompt management (`PromptLibrary`).
 
 ---
 
-## Environment Setup
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.11+
-- Access keys for the chosen LLM provider(s) and Pinecone (if vector indexing is required)
+- API keys for your chosen LLM provider(s) (e.g., OpenAI, Nebius) and Pinecone.
 
 ### Installation
 
-```bash
-# (Option A) Create a virtual environment with Python's built-in venv
-python -m venv .venv
-source .venv/bin/activate    # Windows PowerShell: .venv\Scripts\Activate.ps1
+1.  **Clone the repository and create a virtual environment:**
+    ```bash
+    git clone <repository_url>
+    cd <repository_name>
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    ```
 
-# (Option B) Create a conda environment
-conda create --name medical_summary python=3.11
-conda activate medical_summary
+2.  **Install the required dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
+3.  **Install the package in editable mode** to make the CLI available:
+    ```bash
+    pip install -e .
+    ```
+
+### Configuration
+
+Create a `.env` file in the project root and add your API keys and Pinecone configuration. See `src/medical_summary_builder/config.py` for all available options.
+
+```dotenv
+# .env - API Keys and Configuration
+OPENAI_API_KEY="sk-..."
+NEBIUS_API_KEY="..."
+
+# Pinecone Vector Store
+PINECONE_API_KEY="..."
+PINECONE_ENVIRONMENT="us-west1-gcp"
+PINECONE_INDEX="medical-summary-index"
 ```
-
-Installing in editable mode (`pip install -e .`) ensures the `medical_summary_builder` package is discoverable when running the CLI with `python -m`.
-
-### Environment Variables (`.env`)
-
-```
-NEBIUS_API_KEY=...
-OPENAI_API_KEY=...
-PINECONE_API_KEY=...
-PINECONE_ENVIRONMENT=...
-PINECONE_INDEX=medical-summary-index
-```
-
-Additional optional settings (see `src/medical_summary_builder/config.py`) include directory overrides and runtime flags such as `ENABLE_TELEMETRY` or `DRY_RUN`.
-
----
-
-## Pipeline Methodology
-
-1. **Document ingestion** (`PDFMedicalLoader`): Each PDF page is converted to a LangChain `Document` with page number metadata (`page_label` reflecting true PDF pagination per Instruction.md guidance).
-2. **Chunking** (`DocumentChunker`): Documents are split into overlapping windows to improve retrieval granularity.
-3. **Vector indexing** (`VectorIndexManager`): Chunks are embedded and stored in Pinecone for hybrid retrieval during agent execution.
-4. **Template parsing** (`TemplateLoader`): DOCX template paragraphs are normalized into markdown to align output structure.
-5. **Extraction agents** (`create_react_agent`): LangGraph ReAct agents orchestrate retrieval and reasoning loops, using vector search tools to populate claimant metadata and event tables.
-6. **Custom table support** (`TemplateFiller`): Optional user instructions are parsed to generate bespoke tables beyond the default timeline layout.
-7. **Reporting** (`ReportWriter`): Final `MedicalSummary` models are rendered to markdown/DOCX to mirror `Medical Summary.docx` while referencing actual PDF page numbers for the `REF` column.
-
-The architecture keeps each phase isolated so retrieval, extraction, and formatting strategies can be independently improved or swapped for best-of-breed practices.
 
 ---
 
 ## Usage
 
-### Command Line Interface
+### Command-Line Interface (CLI)
 
-1. **Activate your environment** (`conda activate medical_summary` or `source .venv/bin/activate`).
-2. **Install the project in editable mode** (only needs to be done once per environment):
+Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store.
 
-   ```bash
-   pip install -e .
-   ```
+```bash
+python -m medical_summary_builder.cli \
+  --pdf-path "Data/Medical File.pdf" \
+  --template-path "Data/Medical Summary.docx" \
+  --custom-instruction-file "prompts/custom_table.md" \
+  --skip-indexing
+```
 
-3. **Run the build command** from the repository root:
+**Key Flags:**
+- `--custom-instruction-file`: Optional path to a markdown file describing custom table structures.
+- `--skip-reports`: Prevents writing DOCX and Markdown files (useful if you only need the JSON output).
+- `--skip-indexing`: Bypasses the PDF chunking and vector indexing steps, assuming the knowledge base is already populated.
 
-   ```bash
-   python -m medical_summary_builder.cli build \
-     --pdf-path Data/Medical\ File.pdf \
-     --template-path Data/Medical\ Summary.docx \
-     --custom-instruction-file prompts/custom_table.md \
-     --skip-indexing
-   ```
-
-   - **`--custom-instruction-file`**: Optional markdown describing columns, data definitions, and examples for bespoke tables.
-   - **`--skip-reports`**: Avoid writing markdown/DOCX outputs if downstream systems consume JSON directly.
-   - **`--skip-indexing`**: Bypass PDF chunking and vector indexing if the knowledge base is already populated.
-
-4. **Outputs** are written to the directory configured by `settings.reports_dir` (`outputs/reports/` by default). The CLI will print the exact path upon completion.
+Outputs are saved to the `outputs/reports/` directory by default.
 
 ### FastAPI Service
+
+Start the web service using Uvicorn:
 
 ```bash
 uvicorn medical_summary_builder.api.app:create_app --factory --reload
 ```
 
-POST `/summaries` with multipart form-data fields `pdf_file`, `template_file`, and optional `custom_instruction` to receive a serialized `MedicalSummary` response. Use `/health` for readiness checks.
+The API will be available at `http://127.0.0.1:8000`. You can interact with it via the auto-generated OpenAPI documentation at `http://127.0.0.1:8000/docs`. The primary endpoint is `POST /summaries`, which accepts multipart form data.
 
 ---
 
-## Development Notes
+## Development Roadmap
 
-- Unit tests can be added under `tests/` (not yet scaffolded) using `pytest`.
-- Prompts can be versioned within `prompts/` and loaded via `PromptLibrary` for reproducible agent behavior.
-- Intermediate artefacts (logs, converted templates, diagnostics) are written to folders managed through `config.Settings` ensuring consistent output paths.
-
----
-
-## Roadmap & Enhancements
-
-- **MetadataRouter**: Integrate structured claimant extraction via function calling or JSON schema-constrained prompts.
-- **PageRelevanceRanker**: Implement LLM-based scoring to triage relevant pages before detailed extraction.
-- **Custom layout builder**: Extend `ReportWriter` to dynamically generate DOCX tables from user-specified schemas (Instruction.md bonus requirement).
-- **Evaluation harness**: Add regression tests comparing generated summaries against ground-truth samples.
+- **Enhance Preprocessing**: Implement the `MetadataRouter` and `PageRelevanceRanker` to intelligently triage relevant pages before full extraction, improving efficiency.
+- **Dynamic Layout Builder**: Extend the `ReportWriter` to dynamically generate DOCX tables based on user-defined schemas, fulfilling the "bonus" requirement from the project instructions.
+- **Evaluation Harness**: Develop a suite of tests to compare generated summaries against ground-truth samples, enabling quantitative assessment of quality and regression testing.
+- **Add Unit Tests**: Scaffold a `tests/` directory and implement unit tests with `pytest` for key components.
