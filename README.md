@@ -124,7 +124,7 @@ PINECONE_INDEX="medical-summary-index"
 
 Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store.
 
-A video demonstration is available below:
+A video demonstration is available below: https://github.com/tychen5/Medical-Summary-Builder/blob/main/outputs/demo.mp4
 
 <p align="center">
   <video src="outputs/demo.mp4" controls title="CLI Demo" width="800"></video>
