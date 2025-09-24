@@ -86,11 +86,20 @@ Medical Summary Builder is an end-to-end pipeline that ingests disability case f
 ### Installation
 
 ```bash
+# (Option A) Create a virtual environment with Python's built-in venv
 python -m venv .venv
-. .venv/Scripts/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install --upgrade pip
+source .venv/bin/activate    # Windows PowerShell: .venv\Scripts\Activate.ps1
+
+# (Option B) Create a conda environment
+conda create --name medical_summary python=3.11
+conda activate medical_summary
+
+python -m pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e .
 ```
+
+Installing in editable mode (`pip install -e .`) ensures the `medical_summary_builder` package is discoverable when running the CLI with `python -m`.
 
 ### Environment Variables (`.env`)
 
@@ -124,15 +133,26 @@ The architecture keeps each phase isolated so retrieval, extraction, and formatt
 
 ### Command Line Interface
 
-```bash
-python -m medical_summary_builder.cli build \
-  --pdf-path Data/Medical\ File.pdf \
-  --template-path Data/Medical\ Summary.docx \
-  --custom-instruction-file prompts/custom_table.md
-```
+1. **Activate your environment** (`conda activate medical_summary` or `source .venv/bin/activate`).
+2. **Install the project in editable mode** (only needs to be done once per environment):
 
-- **`--custom-instruction-file`**: Optional markdown describing columns, data definitions, and examples for bespoke tables.
-- **`--skip-reports`**: Avoid writing markdown/DOCX outputs if downstream systems consume JSON directly.
+   ```bash
+   pip install -e .
+   ```
+
+3. **Run the build command** from the repository root:
+
+   ```bash
+   python -m medical_summary_builder.cli build \
+     --pdf-path Data/Medical\ File.pdf \
+     --template-path Data/Medical\ Summary.docx \
+     --custom-instruction-file prompts/custom_table.md
+   ```
+
+   - **`--custom-instruction-file`**: Optional markdown describing columns, data definitions, and examples for bespoke tables.
+   - **`--skip-reports`**: Avoid writing markdown/DOCX outputs if downstream systems consume JSON directly.
+
+4. **Outputs** are written to the directory configured by `settings.reports_dir` (`outputs/reports/` by default). The CLI will print the exact path upon completion.
 
 ### FastAPI Service
 
