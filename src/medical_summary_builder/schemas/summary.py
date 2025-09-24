@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -11,9 +11,9 @@ class ClaimantProfile(BaseModel):
 
     claimant_name: Optional[str] = Field(default=None)
     ssn: Optional[str] = Field(default=None)
-    date_of_birth: Optional[date] = Field(default=None)
-    alleged_onset_date: Optional[date] = Field(default=None)
-    date_last_insured: Optional[date] = Field(default=None)
+    date_of_birth: Optional[datetime.date] = Field(default=None)
+    alleged_onset_date: Optional[datetime.date] = Field(default=None)
+    date_last_insured: Optional[datetime.date] = Field(default=None)
     age_at_aod: Optional[int] = Field(default=None)
     current_age: Optional[int] = Field(default=None)
     education: Optional[str] = Field(default=None)
@@ -24,7 +24,7 @@ class ClaimantProfile(BaseModel):
 class MedicalEvent(BaseModel):
     """Event row for the timeline table."""
 
-    date: Optional[date] = Field(default=None)
+    date: Optional[datetime.date] = Field(default=None)
     provider: Optional[str] = Field(default=None)
     reason: Optional[str] = Field(default=None)
     reference: Optional[str] = Field(default=None, description="Source reference such as page 12/504")
