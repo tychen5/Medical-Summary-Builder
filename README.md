@@ -34,6 +34,8 @@ This project successfully delivers a robust, end-to-end solution for automated m
 
 1.  **Ingestion & Preprocessing**: The pipeline begins by loading the source `Medical File.pdf` and the `Medical Summary.docx` template. The PDF content is parsed and split into manageable, overlapping text chunks (default size: 1500 chars, overlap: 200 chars) to prepare for indexing.
 2.  **Vector Indexing**: Each text chunk is converted into a vector embedding using a powerful model (e.g., `Qwen/Qwen3-Embedding-8B` or `text-embedding-3-small`) and stored in a Pinecone index. This creates a searchable knowledge base from the medical record. This step can be skipped on subsequent runs if the index is already populated.
+
+    [![Pinecone Index Knowledge Base](outputs/pinecone_index.png)](outputs/pinecone_index.png)
 3.  **Agent-Driven Extraction**: A ReAct (Reasoning and Acting) agent, powered by a large language model (default: `Qwen/Qwen3-235B-A22B-Thinking-2507`), is tasked with building the summary. It uses a retriever tool to query the vector index iteratively, gathering evidence to populate the claimant's profile (name, SSN, DOB, etc.) and construct a timeline of medical events.
 4.  **Structured Data Parsing**: The agent is prompted to return its findings as a structured JSON object. The pipeline contains robust logic to find and parse this JSON, even if it is embedded in conversational text or slightly malformed.
 5.  **Fallback Extraction**: If the primary agent fails to return a valid structured output, a fallback mechanism is triggered. This process retrieves a broad context from the vector store and uses a direct, schema-guided LLM call to extract the required information, preventing pipeline failure.
@@ -121,7 +123,7 @@ PINECONE_INDEX="medical-summary-index"
 
 ### Command-Line Interface (CLI)
 
-Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store.
+Run the summary generation process from the project root. The following command uses the sample data and skips re-indexing an existing vector store. A video demonstration is available: [CLI Demo](outputs/demp.mp4).
 
 ```bash
 python -m medical_summary_builder.cli \
