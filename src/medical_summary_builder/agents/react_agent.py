@@ -6,7 +6,6 @@ from langgraph.prebuilt import chat_agent_executor
 from pydantic import BaseModel
 
 from ..llm import LLMClientFactory
-from ..vectorstore import VectorIndexManager
 
 
 def create_react_agent(
@@ -14,10 +13,11 @@ def create_react_agent(
     *,
     system_prompt: str | None = None,
     response_format: Union[Type[BaseModel], tuple[str, Type[BaseModel]], None] = None,
+    provider: str | None = None,
 ):
     """Instantiate a ReAct-style agent for iterative extraction."""
 
-    llm = LLMClientFactory.create(temperature=0.1,provider="openai")
+    llm = LLMClientFactory.create(temperature=0.1, provider=provider)
 
     return chat_agent_executor.create_react_agent(
         model=llm,

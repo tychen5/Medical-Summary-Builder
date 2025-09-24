@@ -17,7 +17,7 @@ class ClaimantProfile(BaseModel):
     age_at_aod: Optional[int] = Field(default=None)
     current_age: Optional[int] = Field(default=None)
     education: Optional[str] = Field(default=None)
-    title: Optional[str] = Field(default=None)
+    claim_title: Optional[str] = Field(default=None)
     notes: Optional[str] = Field(default=None)
 
 

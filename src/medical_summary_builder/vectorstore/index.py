@@ -25,7 +25,7 @@ class VectorIndexManager:
         )
 
     def as_retriever(self, *, search_kwargs: dict | None = None) -> VectorStoreRetriever:
-        search_kwargs = search_kwargs or {"k": 8}
+        search_kwargs = search_kwargs or {"k": 25}
         vectorstore = PineconeVectorStore(
             embedding=self.embeddings,
             index_name=self.index_name,

@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     pinecone_environment: Optional[str] = Field(default=None, env="PINECONE_ENVIRONMENT")
     pinecone_index: str = Field(default="medical-summary-index")
 
-    model_name: str = Field(default="NLP-qa-large")
+    model_name: str = Field(default="Qwen/Qwen3-235B-A22B-Thinking-2507")
     nebius_embedding_model: str = Field(default="Qwen/Qwen3-Embedding-8B")
     openai_embedding_model: str = Field(default="text-embedding-3-small")
     embedding_dimensions: int = Field(default=1536)

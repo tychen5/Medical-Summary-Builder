@@ -17,7 +17,7 @@ class LLMClientFactory:
     @staticmethod
     def create(
         *,
-        provider: ModelProvider | None = None,
+        provider: ModelProvider | None = "openai",#None,
         model_name: Optional[str] = None,
         temperature: float = 0.2,
     ) -> BaseChatModel:
@@ -44,6 +44,6 @@ class LLMClientFactory:
 
         return ChatOpenAI(
             model=model_name or "gpt-5-nano",
-            temperature=temperature,
+            # temperature=temperature,
             api_key=settings.openai_api_key,
         )

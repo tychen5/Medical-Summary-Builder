@@ -103,16 +103,16 @@ class MedicalSummaryPipeline:
         agent_system_prompt = (
             "You are an expert at extracting information from medical records. "
             "First, use the supplied tool multiple times (using different kinds of keywords to search in parallel) and iteratively to gather all required authoritative evidence. "
-            "Populate all of these key profile fields: Claimant Name, SSN, Date of Birth (DOB), AOD, Age at AOD, Date Last Insured (DLI), Current Age, Last Grade Completed (Education), Attended Special Ed Classes (e.g., Yes or No), Title (e.g., T16), Alleged impairments. "
-            "Then construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12/504). "
-            "After gathering all evidence, produce a JSON object with the following shape: {\n"
+            "Populate all of these key profile fields: Claimant Name, SSN, Date of Birth (DOB), AOD, Age at AOD, Date Last Insured (DLI), Current Age, Last Grade Completed (Education), Attended Special Ed Classes (e.g., Yes or No), Claim Title (II/XVI e.g., T16), Alleged impairments. "
+            "Then retrieve more medical records data to construct a timeline of medical events with Date, Provider, Reason, and Reference (page label such as Pg 12). The Timeline of Medical Events dates usually we base on the 3 factors, (Date/Physician) would be the unique attribute for medical visit, for example: 09/15/2022    Willow Creek Med Ctr        Hip pain, X-ray arthritis       Pg 19, 01/27/2023    Central Plains Med Ctr      R hip pain, arthroplasty eval   Pg 91, 02/08/2023    Central Plains Med Ctr      Right total hip replacement     Pg 91, 04/13/2023    Metro Health & Wellness     Post-op follow-up, stable       Pg 14, 07/06/2023    Sterling Health Clinic      Breast lump, hypertension       Pg 16, etc."
+            "After gathering all evidence, please make sure all fields are reasonable & valid and produce a JSON object with the following shape: {\n"
             "  \"profile\": ClaimantProfile fields (claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, "
-            "age_at_aod, current_age, education, title, notes),\n"
-            "  \"events\": list of medical events with keys date (MM/DD/YYYY), provider, reason, reference (e.g., Pg 12/504),\n"
+            "age_at_aod, current_age, education, claim_title),\n"
+            "  \"events\": list of medical events with keys date (MM/DD/YYYY), provider, reason, reference (e.g., Pg 504),\n"
             "  \"custom_tables\": mapping of table names to lists of row dictionaries.\n"
             "}\n"
             "Cite the exact page numbers in the reference column. "
-            "Ensure that every field is populated with the best available evidence or null if truly unavailable."
+            "Ensure that every field is populated with the best available evidence or N/A if truly unavailable."
         )
 
         summary_agent = create_react_agent(
@@ -290,6 +290,20 @@ class MedicalSummaryPipeline:
                 "medical summary claimant details",
                 "background claimant metadata",
                 "timeline of medical events",
+                "Claiment Name",
+                "Social Security Number SSN",
+                "Claim type",
+                "Last Insured: Application",
+                "PFD",
+                "Alleged onset",
+                "AOD",
+                "Below table represents the Relevant Dates",
+                "Age at AOD",
+                "Alleged Onset Date",
+                "Date of Birth",
+                "Current Age",
+                "th grade education",
+                "Medical Records treatment start date"
             ],
             max_chunks=12,
         )
@@ -300,10 +314,10 @@ class MedicalSummaryPipeline:
 
         prompt_parts = [
             "You are given excerpts from a medical case file.",
-            "Fill in the claimant profile (name, SSN, DOB, AOD, DLI, age details, education, title, notes).",
+            "Fill in the claimant profile (name, SSN, DOB, AOD, DLI, age details, education, claim title, notes).",
             "Construct a timeline of significant medical events with date (MM/DD/YYYY), provider, reason, and reference page label (e.g., Pg 12/504).",
             "Return JSON with keys 'profile', 'events', and 'custom_tables'.",
-            "The 'profile' object must include claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, age_at_aod, current_age, education, title, notes.",
+            "The 'profile' object must include claimant_name, ssn, date_of_birth, alleged_onset_date, date_last_insured, age_at_aod, current_age, education, claim_title, notes.",
             "The 'events' array must contain objects with keys date, provider, reason, reference.",
             "The 'custom_tables' object should map table names to arrays of row dictionaries (use an empty object if none).",
             "Context:",
@@ -494,7 +508,7 @@ class MedicalSummaryPipeline:
         retriever,
         queries: Iterable[str],
         *,
-        max_chunks: int = 10,
+        max_chunks: int = 25,
     ) -> str:
         """Aggregate top documents from the retriever into a single text context."""
 

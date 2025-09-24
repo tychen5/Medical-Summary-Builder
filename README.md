@@ -24,7 +24,7 @@ This project successfully delivers a robust, end-to-end solution for automated m
 - **Fully Automated Pipeline**: An operational workflow that seamlessly ingests a source PDF and DOCX template, orchestrates LLM-driven data extraction, and generates a populated summary report without manual intervention.
 - **Advanced RAG-Agent Implementation**: Successful integration of a ReAct agent that iteratively queries a Pinecone vector store to gather evidence, demonstrating a sophisticated approach to information retrieval.
 - **High-Reliability Extraction**: A dual-layer extraction strategy combining a primary ReAct agent with a schema-guided fallback mechanism. This design ensures that the pipeline can recover from agent failures and still produce structured output.
-- **Dynamic & Customizable Table Generation**: The system directly addresses the "bonus" objective by allowing users, such as attorneys, to define their own table structures using plain-text markdown instructions. It can generate reports with custom layouts (e.g., 5 columns for Data, Facility, Physician, Summary, and Ref) based on these instructions. While further system prompt optimization can enhance control, the core mechanism to support this advanced flexibility is already implemented.
+- **Dynamic & Customizable Table Generation**: The system directly addresses the bonus objective by allowing users, such as attorneys, to define their own table structures using plain-text markdown instructions. It can generate reports with custom layouts (e.g., 5 columns for Data, Facility, Physician, Summary, and Ref) based on these instructions. While further system prompt optimization can enhance control, the core mechanism to support this advanced flexibility is already implemented.
 - **Production-Ready Interfaces**: Delivers both a powerful command-line interface (CLI) for batch processing and a scalable FastAPI web service for real-time integration, making the tool versatile for different deployment scenarios.
 - **Modular and Maintainable Codebase**: The project is built on a clean, modular architecture, with clear separation of concerns (e.g., ingestion, processing, reporting). This structure makes the system easy to understand, maintain, and extend.
 
@@ -36,7 +36,7 @@ This project successfully delivers a robust, end-to-end solution for automated m
 2.  **Vector Indexing**: Each text chunk is converted into a vector embedding using a powerful model (e.g., `Qwen/Qwen3-Embedding-8B` or `text-embedding-3-small`) and stored in a Pinecone index. This creates a searchable knowledge base from the medical record. This step can be skipped on subsequent runs if the index is already populated.
 
     [![Pinecone Index Knowledge Base](outputs/pinecone_index.png)](outputs/pinecone_index.png)
-3.  **Agent-Driven Extraction**: A ReAct (Reasoning and Acting) agent, powered by a large language model (default: `Qwen/Qwen3-235B-A22B-Thinking-2507`), is tasked with building the summary. It uses a retriever tool to query the vector index iteratively, gathering evidence to populate the claimant's profile (name, SSN, DOB, etc.) and construct a timeline of medical events.
+3.  **Agent-Driven Extraction**: A ReAct (Reasoning and Acting) agent, powered by a large language model (default: `Qwen/Qwen3-235B-A22B-Thinking-2507` for Nebius; default: `gpt-5-nano` for OpenAI), is tasked with building the summary. It uses a retriever tool to query the vector index iteratively, gathering evidence to populate the claimant's profile (name, SSN, DOB, etc.) and construct a timeline of medical events.
 4.  **Structured Data Parsing**: The agent is prompted to return its findings as a structured JSON object. The pipeline contains robust logic to find and parse this JSON, even if it is embedded in conversational text or slightly malformed.
 5.  **Fallback Extraction**: If the primary agent fails to return a valid structured output, a fallback mechanism is triggered. This process retrieves a broad context from the vector store and uses a direct, schema-guided LLM call to extract the required information, preventing pipeline failure.
 6.  **Report Generation**: The final structured data, represented by a `MedicalSummary` Pydantic model, is passed to a `ReportWriter`. This component populates the original DOCX template with the extracted data and also generates a clean Markdown version of the summary.
@@ -113,7 +113,6 @@ NEBIUS_API_KEY="..."
 
 # Pinecone Vector Store
 PINECONE_API_KEY="..."
-PINECONE_ENVIRONMENT="us-west1-gcp"
 PINECONE_INDEX="medical-summary-index"
 ```
 

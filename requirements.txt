@@ -38,3 +38,4 @@ lxml==6.0.2
 simsimd==6.5.3
 xxhash==3.5.0
 zstandard==0.23.0
+openai==1.77.0
