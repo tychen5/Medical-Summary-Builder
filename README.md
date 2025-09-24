@@ -150,9 +150,16 @@ The API will be available at `http://127.0.0.1:8000`. You can interact with it v
 
 ---
 
-## Development Roadmap
+## Future Improvements & To-Do
 
-- **Enhance Preprocessing**: Implement the `MetadataRouter` and `PageRelevanceRanker` to intelligently triage relevant pages before full extraction, improving efficiency.
-- **Dynamic Layout Builder**: Extend the `ReportWriter` to dynamically generate DOCX tables based on user-defined schemas, fulfilling the "bonus" requirement from the project instructions.
-- **Evaluation Harness**: Develop a suite of tests to compare generated summaries against ground-truth samples, enabling quantitative assessment of quality and regression testing.
-- **Add Unit Tests**: Scaffold a `tests/` directory and implement unit tests with `pytest` for key components.
+- [ ] **Hybrid Search Implementation**: Enhance retrieval accuracy by integrating TF-IDF/BM25 sparse vectors with dense embeddings for Pinecone hybrid search.
+- [ ] **Advanced Page Relevance Ranking**: Implement a sliding window (3-page context) to allow an LLM to evaluate page relevance against user instructions, filtering out irrelevant pages before detailed extraction.
+- [ ] **Intelligent Metadata & Content Summarization**: Use an LLM to identify and extract key claimant metadata from the source file, and summarize dense sections to create a more concise context for the agent.
+- [ ] **Contiguous Page Processing**: Group sequentially relevant pages and process them as a single context to improve the LLM's ability to fill tables accurately.
+- [ ] **Enhanced Data Post-processing**: Implement automatic chronological sorting for all generated timelines and tables after extraction.
+- [ ] **Expanded Nebius Model Support**: Improve compatibility with Nebius chat models, including custom adjustments for their structured output and tool-use schemas.
+- [ ] **Refined Indexing Metadata**: Enhance the document chunking and indexing process to include more robust and accurate page reference metadata.
+- [ ] **Data Augmentation for Chunk Quality**: Investigate techniques to augment source data to create higher-quality, more context-aware chunks for vector embedding.
+- [ ] **Dynamic Layout Builder**: Extend the `ReportWriter` to dynamically generate DOCX tables from user-defined schemas.
+- [ ] **Evaluation Harness**: Develop a suite of tests to compare generated summaries against ground-truth samples for quantitative quality assessment.
+- [ ] **Add Unit Tests**: Scaffold a `tests/` directory and implement a comprehensive suite of unit tests with `pytest`.
