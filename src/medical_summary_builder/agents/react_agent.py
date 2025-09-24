@@ -17,7 +17,7 @@ def create_react_agent(
 ):
     """Instantiate a ReAct-style agent for iterative extraction."""
 
-    llm = LLMClientFactory.create(temperature=0.1)
+    llm = LLMClientFactory.create(temperature=0.1,provider="openai")
 
     return chat_agent_executor.create_react_agent(
         model=llm,
